@@ -5,6 +5,8 @@ use std::io::{Read, Write};
 use crate::binary_reader::BinaryReader;
 use crate::Result;
 use crate::endian::Endian;
+use crate::type_info::TypeInfo;
+use crate::object_info::ObjectInfo;
 
 #[derive(Clone, Debug)]
 pub struct Asset(Arc<AssetImpl>);
@@ -13,6 +15,7 @@ pub struct Asset(Arc<AssetImpl>);
 struct AssetImpl {
     name: String,
     status: u32,
+    type_infos: Vec<TypeInfo>,
 }
 
 impl Asset {
@@ -71,10 +74,34 @@ impl Asset {
         let type_count = cursor.uint32();
         println!("gen_ver {}, plat {}, type_tree {}, type_count {}", generator_version, target_platform, has_type_trees, type_count);
 
+        let mut type_infos: Vec<TypeInfo> = Vec::new();
+        for _ in 0..type_count {
+            let type_info = TypeInfo::new(&mut cursor, format, has_type_trees);
+            type_infos.push(type_info);
+        }
 
+        let mut wide_path_id = false;
+        if format >= 14 {
+            wide_path_id = true;
+        } else if format >= 7 {
+            wide_path_id = cursor.int32() != 0;
+        } else {
+            wide_path_id = false;
+        }
+        println!("wide_path_id {}", wide_path_id);
+
+        let object_count = cursor.uint32();
+        println!("object_count : {}", object_count);
+        let mut objects: Vec<ObjectInfo> = Vec::new();
+        for _ in 0..object_count {
+            let obj = ObjectInfo::new(&mut cursor, format, wide_path_id);
+            //println!("{:?}", obj);
+            objects.push(obj);
+        }
         Ok(Asset(Arc::new(AssetImpl{
             name: name.to_string(),
             status: status,
+            type_infos: type_infos,
         })))
     }
 }

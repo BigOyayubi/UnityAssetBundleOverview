@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 use std::error;
 use std::process;
 
@@ -8,6 +11,9 @@ mod asset_bundle;
 mod binary_reader;
 mod decompress;
 mod endian;
+mod type_info;
+mod constants;
+mod object_info;
 
 use args::Args;
 
@@ -42,7 +48,7 @@ fn files(args: &Args) -> Result<bool> {
         },
         Ok(evals) => {
             for e in evals {
-                println!("{:?}", e);
+                //println!("{:?}", e);
             }
         }
     }

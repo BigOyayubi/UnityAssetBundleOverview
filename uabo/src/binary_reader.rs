@@ -1,4 +1,4 @@
-use std::io::{Read,Seek};
+use std::io::{Read,Seek,SeekFrom};
 use crate::endian::Endian;
 
 macro_rules! read_primitive {
@@ -65,5 +65,13 @@ impl<T: Read+Seek> BinaryReader<T>{
             buf.push(tmp[0]);
         }
         String::from_utf8(buf).expect("can not read signature.")
+    }
+    pub fn align(&mut self, val: u64) {
+        let pos = self.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();
+        let offset = pos % val;
+        if offset > 0 {
+            let after = self.as_mut_ref().seek(SeekFrom::Current((val - offset) as i64)).unwrap();
+            println!("align from {} to {}", pos, after);
+        }
     }
 }
