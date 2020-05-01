@@ -1,10 +1,10 @@
 use std::sync::Arc;
-use std::io::SeekFrom;
+use std::io::{Seek, SeekFrom};
 use std::io::Cursor;
 use std::io::{Read, Write};
-use crate::decompress::decompress_chunk;
-use crate::read_ext::ReadPrimitive;
+use crate::binary_reader::BinaryReader;
 use crate::Result;
+use crate::endian::Endian;
 
 #[derive(Clone, Debug)]
 pub struct Asset(Arc<AssetImpl>);
@@ -12,80 +12,69 @@ pub struct Asset(Arc<AssetImpl>);
 #[derive(Clone, Debug)]
 struct AssetImpl {
     name: String,
-    data: Vec<u8>,
     status: u32,
 }
 
 impl Asset {
-    pub fn read<T: std::io::Read + std::io::Seek>(file: &mut T, version: u32, is_block_info_at_end: bool, compressed_block_info_size: u32, decompressed_block_info_size: u32, flags: u32) -> Result<Vec<Asset>>{
-        // read block infos
-        let mut buf = vec![0u8; compressed_block_info_size as usize];
-        match is_block_info_at_end {
+    pub fn read(name: &String, status: u32, data: &[u8]) -> Result<Asset>{
+        let mut cursor = BinaryReader::new(Cursor::new(data), Endian::Big);
+        let mut meta_size = cursor.uint32();
+        let mut file_size = cursor.uint32() as u64;
+        let format    = cursor.uint32();
+        let mut offset    = cursor.uint32() as u64;
+        let endian    = match format >= 9 {
             true => {
-                let pos = file.seek(SeekFrom::Current(0))?;
-                file.seek(SeekFrom::End(compressed_block_info_size as i64))?;
-                file.read_exact(&mut buf)?;
-                file.seek(SeekFrom::Start(pos))?;
+                let e = match cursor.uint8() != 0 {
+                    true => Endian::Big, 
+                    false => Endian::Little,
+                };
+                cursor.as_mut_ref().seek(SeekFrom::Current(3));
+                e
             },
             false => {
-                if version >= 7 {
-                    let pos = file.seek(SeekFrom::Current(0))?;
-                    file.seek(SeekFrom::Current(pos as i64 & 16))?;
+                cursor.as_mut_ref().seek(SeekFrom::End(meta_size as i64))?;
+                match cursor.uint8() != 0 {
+                    true => Endian::Big,
+                    false => Endian::Little,
                 }
-                let pos = file.seek(SeekFrom::Current(0)).unwrap();
-                //println!("file position   : {}",pos);
-                //println!("compressed size : {}", compressed_block_info_size );
-                //println!("decompressed size : {}", decompressed_block_info_size );
-                file.read_exact(&mut buf)?;
-                //println!("compressed block buf : {:X?}", buf);
             }
-        }
-        // decompress block infos
-        let mut block_info_cursor = Cursor::new(decompress_chunk(&buf, decompressed_block_info_size as i32, flags).unwrap());
+        };
 
-        // read hash
-        let hash: &mut[u8] = &mut [0u8; 16];
-        block_info_cursor.read_exact(hash).unwrap();
-
-        // read block info
-        let block_count = block_info_cursor.int32();
-        let mut block_infos: Vec<(i32, i32, u32)> = Vec::new();
-        let mut total_block_decompress_size = 0;
-        for _ in 0..block_count {
-            let d_size = block_info_cursor.int32();
-            let c_size = block_info_cursor.int32();
-            let flags  = block_info_cursor.int16() as u32;
-            //println!("d_size : {}, c_size : {}, flags : {}", d_size, c_size, flags);
-            total_block_decompress_size += d_size;
-            block_infos.push( (d_size, c_size, flags) );
+        if format >= 22 {
+            meta_size = cursor.uint32();
+            file_size = cursor.uint64();
+            offset = cursor.uint64();
+            cursor.as_mut_ref().seek(SeekFrom::Current(8))?;
         }
 
-        // decompress asset data
-        let mut raw_asset_cursor = Cursor::new(vec![0u8; total_block_decompress_size as usize]);
-        for i in block_infos {
-            let mut buf = vec![0u8; i.1 as usize];
-            file.read_exact(&mut buf).unwrap();
-            buf = decompress_chunk(buf.as_slice(), i.0, i.2).unwrap();
-            std::io::copy(&mut buf.as_slice(), &mut raw_asset_cursor).unwrap();
-        }
+        println!("meta_size {}, file_size {}, format {}, offset {} endian {:?}", 
+                 meta_size, 
+                 file_size, 
+                 format, 
+                 offset, 
+                 endian);
 
-        // read assets
-        let asset_count = block_info_cursor.uint32();
-        let mut assets: Vec<Asset> = Vec::new();
-        for _ in 0..asset_count {
-            let offset = block_info_cursor.uint64() as usize;
-            let size   = block_info_cursor.uint64() as usize;
-            let status = block_info_cursor.uint32();
-            let name   = block_info_cursor.cstr();
-            //TODO split buf from raw_asset_cursor
-            //println!("offset : {}, size : {}, status : {}, name : {}", offset, size, status, name);
-            let asset = Asset(Arc::new(AssetImpl{
-                name: name,
-                data: buf.to_vec(), //TODO
-                status: status,
-            }));
-            assets.push(asset);
-        }
-        Ok(assets)
+        cursor.set_endian(endian);
+
+        let generator_version = match format >= 7 {
+            true => cursor.cstr(),
+            false => String::from("")
+        };
+        let target_platform = match format >= 8 {
+            true => cursor.int32(),
+            false => -1,
+        };
+        let has_type_trees = match format >= 13 {
+            true => cursor.boolean(),
+            false => true
+        };
+        let type_count = cursor.uint32();
+        println!("gen_ver {}, plat {}, type_tree {}, type_count {}", generator_version, target_platform, has_type_trees, type_count);
+
+
+        Ok(Asset(Arc::new(AssetImpl{
+            name: name.to_string(),
+            status: status,
+        })))
     }
 }

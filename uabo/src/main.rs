@@ -5,8 +5,9 @@ mod app;
 mod args;
 mod asset;
 mod asset_bundle;
-mod read_ext;
+mod binary_reader;
 mod decompress;
+mod endian;
 
 use args::Args;
 
