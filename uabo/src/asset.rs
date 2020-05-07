@@ -1,21 +1,32 @@
+
 use std::sync::Arc;
 use std::io::{Seek, SeekFrom};
 use std::io::Cursor;
 use std::io::{Read, Write};
+use log::{info, trace, warn};
+use serde::{Serialize, Deserialize};
+
 use crate::binary_reader::BinaryReader;
 use crate::Result;
 use crate::endian::Endian;
-use crate::type_info::TypeInfo;
+use crate::class_info::ClassInfo;
 use crate::object_info::ObjectInfo;
 
-#[derive(Clone, Debug)]
-pub struct Asset(Arc<AssetImpl>);
-
-#[derive(Clone, Debug)]
-struct AssetImpl {
-    name: String,
-    status: u32,
-    type_infos: Vec<TypeInfo>,
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Asset {
+    name: String,               // アセット名
+    meta_size: u32,             // 
+    file_size: u64,             // 
+    format: u32,                // フォーマットバージョン
+    endian: Endian,             // アセットバイナリエンディアン
+    generator_version: String,  // アセット生成バージョン
+    target_platform: i32,       // 対象プラットフォーム
+    has_type_trees: bool,       // タイプ情報有無
+    with_path_id: bool,         // 
+    comment: String,            // コメント
+    status: u32,                // 
+    classes: Vec<ClassInfo>,
+    objects: Vec<ObjectInfo>,
 }
 
 impl Asset {
@@ -31,7 +42,7 @@ impl Asset {
                     true => Endian::Big, 
                     false => Endian::Little,
                 };
-                cursor.as_mut_ref().seek(SeekFrom::Current(3));
+                cursor.as_mut_ref().seek(SeekFrom::Current(3))?;
                 e
             },
             false => {
@@ -49,15 +60,18 @@ impl Asset {
             offset = cursor.uint64();
             cursor.as_mut_ref().seek(SeekFrom::Current(8))?;
         }
+        let meta_size = meta_size;
+        let file_size = file_size;
+        let offset = offset;
 
-        println!("meta_size {}, file_size {}, format {}, offset {} endian {:?}", 
+        info!("meta_size {}, file_size {}, format {}, offset {} endian {:?}", 
                  meta_size, 
                  file_size, 
                  format, 
                  offset, 
                  endian);
 
-        cursor.set_endian(endian);
+        cursor.set_endian(endian.clone());
 
         let generator_version = match format >= 7 {
             true => cursor.cstr(),
@@ -72,36 +86,81 @@ impl Asset {
             false => true
         };
         let type_count = cursor.uint32();
-        println!("gen_ver {}, plat {}, type_tree {}, type_count {}", generator_version, target_platform, has_type_trees, type_count);
+        info!("gen_ver {}, plat {}, type_tree {}, type_count {}", generator_version, target_platform, has_type_trees, type_count);
 
-        let mut type_infos: Vec<TypeInfo> = Vec::new();
+        let mut classes: Vec<ClassInfo> = Vec::new();
         for _ in 0..type_count {
-            let type_info = TypeInfo::new(&mut cursor, format, has_type_trees);
-            type_infos.push(type_info);
+            classes.push(ClassInfo::new(&mut cursor, format, has_type_trees));
         }
 
-        let mut wide_path_id = false;
-        if format >= 14 {
-            wide_path_id = true;
-        } else if format >= 7 {
-            wide_path_id = cursor.int32() != 0;
-        } else {
-            wide_path_id = false;
-        }
-        println!("wide_path_id {}", wide_path_id);
+        let wide_path_id = format >= 14 || format >= 7 && cursor.int32() != 0;
+        info!("wide_path_id {}", wide_path_id);
 
         let object_count = cursor.uint32();
-        println!("object_count : {}", object_count);
+        info!("object_count : {}", object_count);
         let mut objects: Vec<ObjectInfo> = Vec::new();
         for _ in 0..object_count {
             let obj = ObjectInfo::new(&mut cursor, format, wide_path_id);
-            //println!("{:?}", obj);
+            //info!("{:?}", obj);
             objects.push(obj);
         }
-        Ok(Asset(Arc::new(AssetImpl{
+        if format >= 11 {
+            let add_id_count = cursor.uint32();
+            info!("add_id_count {}", add_id_count);
+            for _ in 0..add_id_count {
+                if format >= 14 {
+                    cursor.align(4);
+                }
+                let file_id = cursor.int32();
+                let local_id = match wide_path_id {
+                    true => cursor.int64(),
+                    false => cursor.int32() as i64,
+                };
+                info!("file_id {}, local_id : {}", file_id, local_id);
+            }
+        }
+        let reference_count = cursor.uint32();
+        info!("reference_count {}", reference_count);
+        for _ in 0..reference_count {
+            let path = match format >= 6 {
+                true => cursor.cstr(),
+                false => String::from(""),
+            };
+            let guid = match format >= 5 {
+                true => Some(cursor.read(16)),
+                false => None,
+            };
+            let _type = match format >= 5 {
+                true => Some(cursor.int32()),
+                false => None,
+            };
+            let file_path = cursor.cstr();
+            info!("path {}, guid {:?}, type {:?}, file_path {:?}", path, guid, _type, file_path);
+        }
+
+        let comment = cursor.cstr();
+        info!("comment {}", comment);
+
+        for o in &mut objects {
+            cursor.as_mut_ref().seek(SeekFrom::Start(offset + o.offset))?;
+            let b = cursor.read(o.size as usize);
+            o.hash = Some(blake3::hash(&b).as_bytes().into_iter().map(|h| format!("{:02X}", h)).collect::<String>());
+        }
+
+        Ok(Asset{
             name: name.to_string(),
+            meta_size: meta_size,
+            file_size: file_size,
+            format: format,
+            endian: endian,
+            generator_version: generator_version.to_string(),
+            target_platform: target_platform,
+            has_type_trees: has_type_trees,
+            with_path_id: wide_path_id,
+            comment: comment.to_string(),
             status: status,
-            type_infos: type_infos,
-        })))
+            classes: classes,
+            objects: objects,
+        })
     }
 }

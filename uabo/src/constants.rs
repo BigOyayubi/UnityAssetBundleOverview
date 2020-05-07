@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 pub fn get_string_or_default<T:Read+Seek>(pos: u32, reader: &mut BinaryReader<T>) -> String
 {
-    match pos & 0x80000000 != 0 {
-        true => String::from(""), // buffer.unpack1("@#{pos}Z*")
+    match pos & 0x80000000 == 0 {
+        true => reader.indexed_cstr(pos as u64), // buffer.unpack1("@#{pos}Z*")
         false => {
             let idx = pos & 0x7fffffff;
             match HASHMAP.get(&idx) {

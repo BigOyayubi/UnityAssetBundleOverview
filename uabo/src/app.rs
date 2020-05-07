@@ -11,11 +11,19 @@ pub fn app() -> App<'static, 'static> {
     .setting(AppSettings::AllArgsOverrideSelf)
     .usage("TODO")
     .arg(
-        clap::Arg::with_name("srcs")
-        .help("asset bundle pathes")
+        clap::Arg::with_name("src")
+        .help("asset bundle pathe")
+        .short("s")
+        .long("src")
+        .takes_value(true)
         .required(true)
-        .multiple(true)
+    ).arg(
+        clap::Arg::with_name("dst")
+        .help("dst path")
+        .short("d")
+        .long("dst")
+        .takes_value(true)
+        .required(true)
     );
-
     app
 }

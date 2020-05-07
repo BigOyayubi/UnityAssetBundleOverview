@@ -14,25 +14,18 @@ pub struct Args(Arc<ArgsImp>);
 
 #[derive(Clone, Debug)]
 struct ArgsImp {
-    srcs: Vec<PathBuf>,
+    src: PathBuf,
+    dst: PathBuf,
 }
 
 impl Args {
     pub fn parse() -> Result<Args> {
         let matches = app::app().get_matches();
-        let mut pats = vec![];
-        match matches.values_of_os("srcs") {
-            None => {
-
-            },
-            Some(srcs) => {
-                for src in srcs {
-                    pats.push( Path::new(src).to_path_buf() );
-                }
-            }
-        }
+        let src = Path::new(matches.value_of("src").unwrap());
+        let dst = Path::new(matches.value_of("dst").unwrap());
         Ok(Args(Arc::new(ArgsImp{
-            srcs: pats
+            src: src.to_path_buf(),
+            dst: dst.to_path_buf(),
         })))
     }
 
@@ -40,11 +33,11 @@ impl Args {
         Ok(Command::Files)
     }
 
-    pub fn evaluates(&self) -> Result<Vec<AssetBundle>>{
-        let mut asset_bundles = vec![];
-        for src in &self.0.srcs {
-            asset_bundles.push( AssetBundle::load(src.to_path_buf())? );
-        }
-        Ok(asset_bundles)
+    pub fn evaluates(&self) -> Result<AssetBundle>{
+        AssetBundle::load(&self.0.src)
+    }
+
+    pub fn dest(&self) -> String {
+        String::from(self.0.dst.to_str().unwrap())
     }
 }

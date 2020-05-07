@@ -26,7 +26,6 @@ impl<T: Read+Seek> BinaryReader<T>{
             endian: endian
         }
     }
-    pub fn as_ref(&self) -> &T { &self.io }
     pub fn as_mut_ref(&mut self) -> &mut T{ &mut self.io }
     pub fn set_endian(&mut self, endian: Endian) {
         self.endian = endian;
@@ -66,12 +65,35 @@ impl<T: Read+Seek> BinaryReader<T>{
         }
         String::from_utf8(buf).expect("can not read signature.")
     }
+
+    pub fn pos(&mut self) -> u64 {
+        self.as_mut_ref().seek(SeekFrom::Current(0)).unwrap()
+    }
+
+    pub fn indexed_cstr(&mut self, idx: u64 ) -> String {
+        let pos = self.pos();
+        self.as_mut_ref().seek(SeekFrom::Start(idx)).unwrap();
+        let s = self.cstr();
+        self.as_mut_ref().seek(SeekFrom::Start(pos)).unwrap();
+        s
+    }
+
+    pub fn skip<I: num_traits::PrimInt>(&mut self, val: I) {
+        match val.to_i64() {
+            Some(offset) => self.as_mut_ref().seek(SeekFrom::Current(offset)).unwrap(),
+            None => { 0 },
+        };
+    }
     pub fn align(&mut self, val: u64) {
         let pos = self.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();
         let offset = pos % val;
         if offset > 0 {
-            let after = self.as_mut_ref().seek(SeekFrom::Current((val - offset) as i64)).unwrap();
-            println!("align from {} to {}", pos, after);
+            self.as_mut_ref().seek(SeekFrom::Current((val - offset) as i64)).unwrap();
         }
+    }
+    pub fn read(&mut self, val: usize) -> Vec<u8> {
+        let mut buf = vec![0u8; val];
+        self.as_mut_ref().read_exact(&mut buf).unwrap();
+        buf
     }
 }
