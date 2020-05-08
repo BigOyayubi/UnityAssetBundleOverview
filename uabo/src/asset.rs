@@ -1,9 +1,6 @@
-
-use std::sync::Arc;
 use std::io::{Seek, SeekFrom};
 use std::io::Cursor;
-use std::io::{Read, Write};
-use log::{info, trace, warn};
+use log::{info};
 use serde::{Serialize, Deserialize};
 
 use crate::binary_reader::BinaryReader;
@@ -11,6 +8,8 @@ use crate::Result;
 use crate::endian::Endian;
 use crate::class_info::ClassInfo;
 use crate::object_info::ObjectInfo;
+use crate::reference::Reference;
+use crate::local_object_entry::LocalObjectEntry;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Asset {
@@ -25,6 +24,8 @@ pub struct Asset {
     with_path_id: bool,         // 
     comment: String,            // コメント
     status: u32,                // 
+    add_ids: Vec<LocalObjectEntry>,
+    references: Vec<Reference>,
     classes: Vec<ClassInfo>,
     objects: Vec<ObjectInfo>,
 }
@@ -104,6 +105,7 @@ impl Asset {
             //info!("{:?}", obj);
             objects.push(obj);
         }
+        let mut add_ids: Vec<LocalObjectEntry> = Vec::new();
         if format >= 11 {
             let add_id_count = cursor.uint32();
             info!("add_id_count {}", add_id_count);
@@ -116,11 +118,12 @@ impl Asset {
                     true => cursor.int64(),
                     false => cursor.int32() as i64,
                 };
-                info!("file_id {}, local_id : {}", file_id, local_id);
+                add_ids.push( LocalObjectEntry::new(file_id, local_id));
             }
         }
         let reference_count = cursor.uint32();
         info!("reference_count {}", reference_count);
+        let mut references: Vec<Reference> = Vec::new();
         for _ in 0..reference_count {
             let path = match format >= 6 {
                 true => cursor.cstr(),
@@ -130,12 +133,19 @@ impl Asset {
                 true => Some(cursor.read(16)),
                 false => None,
             };
-            let _type = match format >= 5 {
+            let type_ = match format >= 5 {
                 true => Some(cursor.int32()),
                 false => None,
             };
             let file_path = cursor.cstr();
-            info!("path {}, guid {:?}, type {:?}, file_path {:?}", path, guid, _type, file_path);
+            references.push(
+                Reference::new(
+                    path,
+                    guid,
+                    type_,
+                    file_path,
+                )
+            );
         }
 
         let comment = cursor.cstr();
@@ -161,6 +171,8 @@ impl Asset {
             status: status,
             classes: classes,
             objects: objects,
+            add_ids: add_ids,
+            references: references,
         })
     }
 }

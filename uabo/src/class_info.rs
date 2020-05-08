@@ -1,10 +1,7 @@
-use std::io::{Read,Seek,SeekFrom,Cursor};
-use std::collections::HashMap;
-use log::{info, trace, warn};
+use std::io::{Read,Seek};
+use log::{info};
 use serde::{Serialize, Deserialize};
-use crate::endian::Endian;
 use crate::binary_reader::BinaryReader;
-use crate::constants;
 use crate::type_info::TypeInfo;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

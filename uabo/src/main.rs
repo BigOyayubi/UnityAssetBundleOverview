@@ -5,8 +5,7 @@ use std::fs;
 use std::error;
 use std::process;
 use std::io::{BufWriter, Write};
-use log::{info, trace, warn};
-use serde::{Deserialize, Serialize};
+use log::{info, warn};
 
 mod app;
 mod args;
@@ -19,6 +18,9 @@ mod class_info;
 mod constants;
 mod object_info;
 mod type_info;
+mod reference;
+mod local_object_entry;
+mod container_info;
 
 use args::Args;
 

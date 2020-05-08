@@ -1,5 +1,5 @@
 use std::io::{Read,Seek};
-use log::{info, trace, warn};
+use log::{info};
 use serde::{Serialize, Deserialize};
 use crate::binary_reader::BinaryReader;
 

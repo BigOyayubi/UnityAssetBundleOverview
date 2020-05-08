@@ -1,8 +1,6 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::fs::File;
-use std::io::{BufReader, Read, Write, Seek, SeekFrom, Cursor};
-use log::{info, trace, warn};
+use std::io::{BufReader, Read, Seek, SeekFrom, Cursor};
 use serde::{Serialize, Deserialize};
 
 use crate::decompress::decompress_chunk;
