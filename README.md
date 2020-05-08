@@ -11,7 +11,9 @@ Mikunyan is a great ruby library to deserialize AssetBundle file of Unity.
 # How To Use
 
 ```
-$ uabe --src /path/to/foo.unity3d --dst /path/to/your.json
+$ cd uabo
+$ cargo build
+$ target/debug/uabo --src /path/to/foo.unity3d --dst /path/to/your.json
 $ cat /path/to/your.json
 {
   "signiture": "UnityFS",
